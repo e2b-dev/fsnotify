@@ -469,11 +469,12 @@ func withOps(op Op) addOpt {
 }
 
 // "Internal" option for recursive watches on inotify.
-func withCreate() addOpt {
+func WithCreate() addOpt {
 	return func(opt *withOpts) { opt.sendCreate = true }
 }
 
-var enableRecurse = false
+// Enable recursive folder watching
+var enableRecurse = true
 
 // Check if this path is recursive (ends with "/..." or "\..."), and return the
 // path with the /... stripped.

@@ -1,19 +1,16 @@
-fsnotify is a Go library to provide cross-platform filesystem notifications on
-Windows, Linux, macOS, BSD, and illumos.
-
-Go 1.17 or newer is required; the full documentation is at
-https://pkg.go.dev/github.com/fsnotify/fsnotify
+Fork of the original [fsnotify](https://github.com/fsnotify/fsnotify) library that enables recursive watching.
+Because of the current implementation limitations, the only supported platforms are updated in the table below.
 
 ---
 
 Platform support:
 
 | Backend               | OS         | Status                                                                    |
-| :-------------------- | :--------- | :------------------------------------------------------------------------ |
+| :-------------------- | :--------- |:--------------------------------------------------------------------------|
 | inotify               | Linux      | Supported                                                                 |
-| kqueue                | BSD, macOS | Supported                                                                 |
+| kqueue                | BSD, macOS | [Not Yet](https://github.com/fsnotify/fsnotify/issues/18)                                                                 |
 | ReadDirectoryChangesW | Windows    | Supported                                                                 |
-| FEN                   | illumos    | Supported                                                                 |
+| FEN                   | illumos    | [Not Yet](https://github.com/fsnotify/fsnotify/issues/18)                 |
 | fanotify              | Linux 5.9+ | [Not yet](https://github.com/fsnotify/fsnotify/issues/114)                |
 | FSEvents              | macOS      | [Needs support in x/sys/unix][fsevents]                                   |
 | USN Journals          | Windows    | [Needs support in x/sys/windows][usn]                                     |
@@ -35,7 +32,7 @@ package main
 import (
     "log"
 
-    "github.com/fsnotify/fsnotify"
+    "github.com/e2b-dev/fsnotify"
 )
 
 func main() {
@@ -92,8 +89,7 @@ FAQ
 No, not unless you are watching the location it was moved to.
 
 ### Are subdirectories watched?
-No, you must add watches for any directory you want to watch (a recursive
-watcher is on the roadmap: [#18]).
+Yes. The provided path has to end with "..." to watch subdirectories.
 
 [#18]: https://github.com/fsnotify/fsnotify/issues/18
 
