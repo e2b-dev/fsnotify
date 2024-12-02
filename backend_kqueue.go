@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fsnotify/fsnotify/internal"
+	"github.com/e2b-dev/fsnotify/internal"
 	"golang.org/x/sys/unix"
 )
 
