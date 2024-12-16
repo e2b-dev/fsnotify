@@ -538,6 +538,12 @@ func (w *inotify) readEvents() {
 			}
 
 			ev := w.newEvent(name, mask, raw.Cookie)
+
+			/// Send the events that are not ignored on the events channel
+			if !w.sendEvent(ev) {
+				return
+			}
+
 			// Need to update watch path for recurse.
 			if watch.recurse {
 				isDir := mask&unix.IN_ISDIR == unix.IN_ISDIR
@@ -569,14 +575,37 @@ func (w *inotify) readEvents() {
 							}
 						}
 						w.watches.mu.Unlock()
+						return
+					}
+
+					// Register a newly created dir tree
+					// This is for "mkdir -p one/two/three".
+					// Usually all those directories will be created before we can set up
+					// watchers on the subdirectories, so only "one" would be sent
+					// as a Create event and not "one/two" and "one/two/three"
+					// (inotifywait -r has the same problem).
+					err = filepath.WalkDir(ev.Name, func(curDir string, d fs.DirEntry, err error) error {
+						if err != nil {
+							return err
+						}
+
+						if ev.Name != curDir {
+							// Send artificial create event.
+							// We don't know what has really happened.
+							w.sendEvent(Event{Name: ev.Name, Op: Create})
+						}
+
+						if d.IsDir() {
+							return w.register(curDir, watch.flags, true)
+						}
+						return nil
+					})
+					if !w.sendError(err) {
+						return
 					}
 				}
 			}
 
-			/// Send the events that are not ignored on the events channel
-			if !w.sendEvent(ev) {
-				return
-			}
 			next()
 		}
 	}
