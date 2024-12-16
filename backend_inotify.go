@@ -522,7 +522,7 @@ func (w *inotify) handleEvent(inEvent *unix.InotifyEvent, buf *[65536]byte, offs
 				if ev.Name != curDir {
 					// Send artificial create event.
 					// We don't know what has really happened.
-					w.sendEvent(Event{Name: ev.Name, Op: Create})
+					w.sendEvent(Event{Name: curDir, Op: Create})
 				}
 
 				if d.IsDir() {
