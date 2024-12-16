@@ -511,6 +511,38 @@ func (w *inotify) handleEvent(inEvent *unix.InotifyEvent, buf *[65536]byte, offs
 					}
 				}
 			}
+			// Register a newly created dir tree
+			// This is for "mkdir -p one/two/three".
+			// Usually all those directories will be created before we can set up
+			// watchers on the subdirectories, so only "one" would be sent
+			// as a Create event and not "one/two" and "one/two/three"
+			// (inotifywait -r has the same problem).
+			err = filepath.WalkDir(ev.Name, func(curDir string, d fs.DirEntry, err error) error {
+				if err != nil {
+					return err
+				}
+
+				if ev.Name != curDir {
+					// Send artificial create event.
+					// We don't know what has really happened.
+
+					// Send the previous event first to maintain proper ordering, then create a new event for the current directory
+					// The function expects to return only one event, so we need to send the previous event first and then create a new one
+					if !w.sendEvent(ev) {
+						return
+					}
+
+					ev = w.newEvent(curDir, unix.IN_CREATE)
+				}
+
+				if d.IsDir() {
+					return w.register(curDir, watch.flags, true)
+				}
+				return nil
+			})
+			if !w.sendError(err) {
+				return
+			}
 		}
 	}
 
