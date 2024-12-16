@@ -592,7 +592,7 @@ func (w *inotify) readEvents() {
 						if ev.Name != curDir {
 							// Send artificial create event.
 							// We don't know what has really happened.
-							w.sendEvent(Event{Name: ev.Name, Op: Create})
+							w.sendEvent(Event{Name: curDir, Op: Create})
 						}
 
 						if d.IsDir() {
