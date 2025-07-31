@@ -248,6 +248,17 @@ func (w *inotify) AddWith(path string, opts ...addOpt) error {
 				w.sendEvent(Event{Name: root, Op: Create})
 			}
 
+			// If there's a dir for which we don't have read permissions,
+			// skip it silently. If it's the root directory itself, return an error.
+			_, infoErr := d.Info()
+			if infoErr != nil && errors.Is(infoErr, os.ErrPermission) {
+				if root == path {
+					return fmt.Errorf("fsnotify: not a readable directory: %q", path)
+				}
+
+				return filepath.SkipDir // Skip this directory silently.
+			}
+
 			wf := flagRecurse
 			if root == path {
 				wf |= flagByUser
@@ -530,6 +541,13 @@ func (w *inotify) handleEvent(inEvent *unix.InotifyEvent, buf *[65536]byte, offs
 						// The function expects to return only one event, so we need to send the previous event first and then create a new one
 						w.sendEvent(ev)
 						ev = w.newEvent(curDir, unix.IN_CREATE, 0)
+					}
+
+					// If there's a dir for which we don't have read permissions,
+					// skip it silently. If it's the root directory itself, return an error.
+					_, infoErr := d.Info()
+					if infoErr != nil && errors.Is(infoErr, os.ErrPermission) {
+						return filepath.SkipDir // Skip this directory silently.
 					}
 
 					if d.IsDir() {
