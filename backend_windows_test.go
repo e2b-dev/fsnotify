@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -128,5 +129,36 @@ func TestCloseAfterUnreadError(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("the reader never completed shutdown after an undelivered error")
+	}
+}
+
+// Concurrent Close calls must all return: only the first queues a reply.
+func TestConcurrentClose(t *testing.T) {
+	w, err := NewWatcher()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Add(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = w.Close()
+		}()
+	}
+	closed := make(chan struct{})
+	go func() { wg.Wait(); close(closed) }()
+
+	select {
+	case <-closed:
+	case <-time.After(10 * time.Second):
+		t.Fatal("concurrent Close calls did not all return")
+	}
+	if b := w.b.(*readDirChangesW); len(b.done) != 0 {
+		t.Fatalf("%d reply channels left on done", len(b.done))
 	}
 }

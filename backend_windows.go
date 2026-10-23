@@ -93,11 +93,14 @@ func (w *readDirChangesW) sendError(err error) bool {
 }
 
 func (w *readDirChangesW) Close() error {
-	if w.isClosed() {
+	// Check and set under one lock: a second concurrent Close must not queue
+	// a second reply, which the one-slot done channel and the single reader
+	// cannot both serve.
+	w.mu.Lock()
+	if w.closed {
+		w.mu.Unlock()
 		return nil
 	}
-
-	w.mu.Lock()
 	w.closed = true
 	w.mu.Unlock()
 
