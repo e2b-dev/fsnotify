@@ -76,12 +76,16 @@ func (w *readDirChangesW) sendEvent(name, renamedFrom string, mask uint64) bool 
 }
 
 // Returns true if the error was sent, or false if watcher is closed.
+//
+// Close's reply channel is put back, as sendEvent does: the reader takes it
+// on its next wakeup and runs the cleanup, and Close blocks until it does.
 func (w *readDirChangesW) sendError(err error) bool {
 	if err == nil {
 		return true
 	}
 	select {
-	case <-w.done:
+	case ch := <-w.done:
+		w.done <- ch
 		return false
 	case w.Errors <- err:
 		return true
