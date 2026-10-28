@@ -3,9 +3,12 @@
 package fsnotify
 
 import (
+	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestRemoveState(t *testing.T) {
@@ -69,5 +72,93 @@ func TestWindowsRemWatch(t *testing.T) {
 	}
 	if err := w.b.(*readDirChangesW).remWatch(tmp); err == nil {
 		t.Fatal("Should be fail with closed handle\n")
+	}
+}
+
+// sendError on a closing watcher must leave Close's reply channel queued for
+// the reader. If it is dropped, the reader never runs the shutdown cleanup and
+// Close waits on the reply forever.
+func TestSendErrorKeepsCloseReply(t *testing.T) {
+	w := &readDirChangesW{
+		Errors: make(chan error), // nobody reads errors any more
+		done:   make(chan chan<- error, 1),
+	}
+	reply := make(chan error)
+	w.done <- reply
+
+	if w.sendError(errors.New("overflow")) {
+		t.Fatal("sendError reported the error as delivered")
+	}
+	select {
+	case got := <-w.done:
+		if got != reply {
+			t.Fatal("sendError replaced Close's reply channel")
+		}
+	default:
+		t.Fatal("sendError dropped Close's reply channel")
+	}
+}
+
+// Close must return when the error consumer has gone away and the backend
+// then reports an error: the reader keeps the reply and completes shutdown.
+func TestCloseAfterUnreadError(t *testing.T) {
+	w, err := NewWatcher()
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := w.b.(*readDirChangesW)
+
+	// Close queues its reply and wakes the reader; an error raised before the
+	// reader takes it meets an Errors channel nobody reads.
+	b.mu.Lock()
+	b.closed = true
+	b.mu.Unlock()
+	reply := make(chan error)
+	b.done <- reply
+	if b.sendError(errors.New("overflow")) {
+		t.Fatal("sendError reported the error as delivered")
+	}
+	if err := b.wakeupReader(); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case err := <-reply:
+		if err != nil {
+			t.Fatalf("shutdown: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the reader never completed shutdown after an undelivered error")
+	}
+}
+
+// Concurrent Close calls must all return: only the first queues a reply.
+func TestConcurrentClose(t *testing.T) {
+	w, err := NewWatcher()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Add(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = w.Close()
+		}()
+	}
+	closed := make(chan struct{})
+	go func() { wg.Wait(); close(closed) }()
+
+	select {
+	case <-closed:
+	case <-time.After(10 * time.Second):
+		t.Fatal("concurrent Close calls did not all return")
+	}
+	if b := w.b.(*readDirChangesW); len(b.done) != 0 {
+		t.Fatalf("%d reply channels left on done", len(b.done))
 	}
 }
